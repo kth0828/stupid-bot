@@ -739,7 +739,7 @@ async def horse_race(interaction: discord.Interaction, bet: int, horse_number: i
         track = ""
         for i, horse in enumerate(horses):
             position = progress[i]
-            track += f"{horse}: " + "⬜" * position + "🏇" + "⬜" * (race_length - position) + "[🏁]\n"
+            track += f"{horse}: " + "⬜" * position + "➡️" + "⬜" * (race_length - position) + "[🏁]\n"
         return track
 
     # 초기 Embed 생성 (색상 변경)
