@@ -259,8 +259,8 @@ class Utility(commands.Cog):
         embed.add_field(name="📅 생성 날짜", value="2024년 12월 23일", inline=False)
         embed.add_field(name="📋 주요 기능", value="음악 재생, 번역, 게임, TTS와 같은 유틸리티 명령어 제공", inline=False)
         embed.add_field(name="👨‍💻 개발자", value="_kth. or kth#6249", inline=False)
-        embed.add_field(name="💻 GitHub", value="[프로젝트 링크](https://github.com/yourname/project)", inline=False)
-        embed.set_thumbnail(url="https://ibb.co/rmBCsG2")  # 봇의 로고 URL
+        embed.add_field(name="💻 GitHub", value="[프로젝트 링크](https://github.com/kth0828/stupid-bot.git)", inline=False)
+        embed.set_thumbnail(url="https://i.ibb.co/80yWcDg/image.jpg")  # 봇의 로고 URL
         embed.set_footer(text="이 봇은 맞으면서 컸습니다.")
 
         await interaction.response.send_message(embed=embed)
@@ -739,11 +739,11 @@ async def horse_race(interaction: discord.Interaction, bet: int, horse_number: i
         track = ""
         for i, horse in enumerate(horses):
             position = progress[i]
-            track += f"{horse}: {'=' * position}>{' ' * (race_length - position)}\n"
+            track += f"{horse}: " + "⬜" * position + "🏇" + "⬜" * (race_length - position) + "[🏁]\n"
         return track
 
-    # 초기 Embed 생성
-    embed = discord.Embed(title="🏁 경마 게임 시작!", color=discord.Color.blue())
+    # 초기 Embed 생성 (색상 변경)
+    embed = discord.Embed(title="🏁 경마 게임 시작!", color=discord.Color.orange())
     embed.description = create_track()
     await interaction.response.send_message(embed=embed)
     message = await interaction.original_response()
@@ -775,9 +775,10 @@ async def horse_race(interaction: discord.Interaction, bet: int, horse_number: i
     # 포인트 저장
     save_points(points)
 
-    # 최종 결과 Embed
-    embed = discord.Embed(title="🎉 경마 게임 결과!", description=create_track(), color=discord.Color.green())
-    embed.add_field(name="우승마 🏆", value=f"{horses[winner-1]}이 우승했습니다!", inline=False)
+    # 최종 결과 Embed (승리/패배 색상 변경)
+    result_color = discord.Color.gold() if winner == horse_number else discord.Color.red()
+    embed = discord.Embed(title="🏆 경마 게임 결과!", description=create_track(), color=result_color)
+    embed.add_field(name="🏆 우승마", value=f"{horses[winner-1]}이 우승했습니다!", inline=False)
     embed.add_field(name="결과", value=result_message, inline=False)
     embed.set_footer(text=f"현재 {interaction.user.name}님의 포인트: {int(points[user_id]):,}")
     await message.edit(embed=embed)
@@ -812,9 +813,10 @@ async def daily_check_in(interaction: discord.Interaction):
         mark_checked_in(user_id)
         add_points(user_id, 100000)
         current_points = get_points(user_id)
+        formatted_points = f"{current_points:,}"  # 3자리마다 , 추가
         await interaction.response.send_message(
-            f"✅ {interaction.user.name}님, 출석 체크 완료! 10만 포인트를 받으셨습니다. "
-            f"현재 포인트: {current_points}점."
+            f"✅ {interaction.user.name}님, 출석 체크 완료! 100,000 포인트를 받으셨습니다. "
+            f"현재 포인트: {formatted_points}점."
         )
 
 @bot.tree.command(name="랭킹", description="포인트 랭킹을 확인합니다.")
