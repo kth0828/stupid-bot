@@ -9,7 +9,7 @@ import os
 import re
 import json
 import asyncio
-from datetime import datetime
+from datetime import datetime, timedelta
 from gtts import gTTS
 from yt_dlp import YoutubeDL
 from dico_token import Token
@@ -264,6 +264,7 @@ class Utility(commands.Cog):
         embed.set_footer(text="이 봇은 맞으면서 컸습니다.")
 
         await interaction.response.send_message(embed=embed)
+
 
 async def setup(bot):
     await bot.add_cog(Utility(bot))
@@ -819,6 +820,71 @@ async def daily_check_in(interaction: discord.Interaction):
             f"현재 포인트: {formatted_points}점."
         )
 
+# API 설정
+KOREANBOTS_API_KEY = "YOUR_KOREANBOTS_API_KEY"  # 한국 디스코드 리스트 API 키
+BOT_ID = "YOUR_BOT_ID"  # 봇 ID
+VOTE_API_URL = f"https://api.koreanbots.dev/v2/bots/{BOT_ID}/votes"
+
+# 유저별 하트 지급 기록 저장
+last_vote_time = {}
+
+@bot.tree.command(name="하트보상", description="한국 디스코드 리스트에서 하트를 눌러 포인트를 받습니다.")
+async def heart_reward(interaction: discord.Interaction):
+    user_id = str(interaction.user.id)
+    
+    # API 요청 (하트 목록 가져오기)
+    headers = {"Authorization": f"Bot {KOREANBOTS_API_KEY}"}
+    response = requests.get(VOTE_API_URL, headers=headers)
+
+    if response.status_code != 200:
+        embed = discord.Embed(
+            title="⚠️ API 오류!",
+            description="하트 정보를 불러오는 중 오류가 발생했습니다. 나중에 다시 시도해주세요.",
+            color=0xFF0000
+        )
+        await interaction.response.send_message(embed=embed, ephemeral=True)
+        return
+
+    votes = response.json().get("data", [])  # 하트 누른 유저 목록
+
+    # 사용자가 하트를 눌렀는지 확인
+    if user_id not in [str(voter["id"]) for voter in votes]:
+        embed = discord.Embed(
+            title="❌ 하트를 누르지 않았어요!",
+            description="먼저 [한국 디스코드 리스트](https://koreanbots.dev/)에서 하트를 눌러주세요!",
+            color=0xFF0000
+        )
+        await interaction.response.send_message(embed=embed, ephemeral=True)
+        return
+
+    # 최근 지급 시간 확인 (쿨타임 12시간 적용)
+    current_time = datetime.utcnow()
+    if user_id in last_vote_time and current_time - last_vote_time[user_id] < timedelta(hours=12):
+        embed = discord.Embed(
+            title="⏳ 이미 보상을 받았어요!",
+            description="하트 보상은 **12시간마다** 받을 수 있습니다.",
+            color=0xFFAA00
+        )
+        await interaction.response.send_message(embed=embed, ephemeral=True)
+        return
+
+    # 포인트 지급 (100만 포인트)
+    points_data = load_points()
+    points_data[user_id] = points_data.get(user_id, 0) + 1_000_000
+    save_points(points_data)
+
+    # 최근 보상 시간 기록
+    last_vote_time[user_id] = current_time
+
+    # 성공 메시지
+    embed = discord.Embed(
+        title="🎉 하트 보상 지급 완료!",
+        description="💖 한국 디스코드 리스트에서 하트를 눌러주셔서 감사합니다!\n\n💰 **1,000,000 포인트**가 지급되었습니다.",
+        color=0x00FF00
+    )
+    embed.set_footer(text="12시간 후 다시 보상을 받을 수 있습니다!")
+    await interaction.response.send_message(embed=embed, ephemeral=True)
+
 @bot.tree.command(name="랭킹", description="티어와 포인트를 종합하여 랭킹을 확인합니다.")
 async def show_ranking(interaction: discord.Interaction, top_n: int = 10):
     """
@@ -986,6 +1052,44 @@ def tier_upgrade(current_tier):
             return current_tier  # 최하위 티어에서 더 내려갈 수 없음
     else:
         return current_tier  # 유지
+
+@bot.tree.command(name="티어", description="티어 시스템과 티어 종류를 설명합니다.")
+async def tier_info(interaction: discord.Interaction):
+    """ 티어 시스템과 티어 종류에 대한 설명을 제공하는 명령어 """
+    
+    # Embed 생성
+    embed = discord.Embed(
+        title="🏆 티어 시스템 안내",
+        description="이 서버의 티어 시스템은 **7개의 단계**로 구성되어 있으며, "
+                    "포인트를 사용하여 승급할 수 있습니다.\n\n"
+                    "💡 `/배치고사`를 통해 기본 티어를 부여받고 `/티어상승`으로 티어를 올려보세요!",
+        color=discord.Color.gold()
+    )
+
+    # 티어별 승급 포인트
+    tier_info = {
+        "그랜드마스터": (100_000_000, "최고의 유저만 도달할 수 있는 최상위 티어"),
+        "마스터": (50_000_000, "매우 숙련된 유저가 도달할 수 있는 티어"),
+        "다이아몬드": (10_000_000, "고수들의 전장! 더욱 전략적인 플레이가 필요"),
+        "플래티넘": (1_000_000, "상위권 유저들이 속한 티어"),
+        "골드": (500_000, "중상위권 유저들이 속한 티어"),
+        "실버": (200_000, "평균적인 실력을 가진 유저들의 티어"),
+        "브론즈": (100_000, "초보자 및 입문자들이 시작하는 기본 티어")
+    }
+
+    # 티어별 설명 추가
+    for name, (points, description) in tier_info.items():
+        embed.add_field(
+            name=f"**{name}**",
+            value=f"📌 {description}\n💰 **필요 포인트:** {points:,}",
+            inline=False
+        )
+
+    # 추가 정보
+    embed.set_footer(text="💡 `/티어상승`을 통해 포인트를 소모하여 티어를 올릴 수 있습니다!")
+
+    # 메시지 전송
+    await interaction.response.send_message(embed=embed)
 
 # /배치고사 커맨드 (임베드 적용)
 @bot.tree.command(name="배치고사", description="초기 티어를 부여받습니다.")
