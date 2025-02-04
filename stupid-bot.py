@@ -423,7 +423,7 @@ async def on_ready():
     load_tts_settings()
     print(f"Logged in as {bot.user} (ID: {bot.user.id})")
     custom_activity = discord.CustomActivity(
-        name="🎥오징어 게임2 보는 중",  # 표시될 상태 메시지
+        name="📺 중증외상센터 보는 중",  # 표시될 상태 메시지
         type=discord.ActivityType.playing  # Playing 대신 Watching, Listening 등도 가능
     )
     print(f"Cogs: {list(bot.cogs.keys())}")  # 로드된 Cog 확인
@@ -819,41 +819,276 @@ async def daily_check_in(interaction: discord.Interaction):
             f"현재 포인트: {formatted_points}점."
         )
 
-@bot.tree.command(name="랭킹", description="포인트 랭킹을 확인합니다.")
+@bot.tree.command(name="랭킹", description="티어와 포인트를 종합하여 랭킹을 확인합니다.")
 async def show_ranking(interaction: discord.Interaction, top_n: int = 10):
     """
-    포인트 랭킹을 출력합니다.
+    티어와 포인트를 종합하여 랭킹을 출력합니다.
     :param interaction: Discord 슬래시 커맨드 인터랙션
     :param top_n: 표시할 랭킹 상위 n명의 수
     """
     points = load_points()
+    user_data = load_user_data()  # 유저 데이터(티어 포함) 로드
 
-    # 포인트를 기준으로 정렬
-    sorted_points = sorted(points.items(), key=lambda x: x[1], reverse=True)
-    top_players = sorted_points[:top_n]
-
-    # 랭킹 메시지 생성
-    if not top_players:
+    if not points:
         await interaction.response.send_message("포인트 데이터가 없습니다.", ephemeral=True)
         return
 
-    # Embed 객체 생성
-    embed = discord.Embed(title="📊 포인트 랭킹 📊", color=discord.Color.blue())
+    # 티어별 정렬 우선순위 (높을수록 상위 랭크)
+    tier_priority = {
+        "그랜드마스터": 7,
+        "마스터": 6,
+        "다이아몬드": 5,
+        "플래티넘": 4,
+        "골드": 3,
+        "실버": 2,
+        "브론즈": 1,
+        "언랭크": 0
+    }
 
-    # 1, 2, 3등에 왕관 이모지를 추가
-    crown_emoji = ["👑"]  # 1, 2, 3등 왕관 이모지
+    # 숫자를 라틴 숫자로 변환하는 딕셔너리
+    roman_numerals = {"1": "I", "2": "II", "3": "III", "4": "IV", "5": "V"}
 
-    for rank, (user_id, points) in enumerate(top_players, start=1):
-        # 왕관을 추가 (1등만)
-        if rank == 1:
-            crown = crown_emoji[0]
+    ranking_list = []
+    
+    for user_id, point in points.items():
+        # 유저 티어 가져오기
+        if user_id in user_data and "tier" in user_data[user_id]:
+            tier_name, tier_number = user_data[user_id]["tier"].split()
+            roman_tier = roman_numerals.get(tier_number, tier_number)  # 라틴 숫자로 변환
+            tier_display = f"[{tier_name} {roman_tier}]"  # 예: [브론즈 V]
+            tier_rank = tier_priority.get(tier_name, 0)  # 티어 우선순위
         else:
-            crown = ""
-        
-        # 포인트를 쉼표로 구분된 형식으로 추가
-        embed.add_field(name=f"**{crown} {rank}위**", value=f"<@{user_id}>: {int(points):,} 포인트", inline=False)
+            tier_display = "[언랭크]"
+            tier_rank = 0  # 언랭크는 가장 낮은 우선순위
+
+        # 정렬을 위한 튜플 (티어 우선순위, 티어 내림차순, 포인트 내림차순)
+        ranking_list.append((tier_rank, -int(tier_number) if tier_rank > 0 else 0, point, user_id, tier_display))
+
+    # 정렬: 티어 우선순위 -> 같은 티어 내에서 숫자가 낮을수록(예: 브론즈 I이 브론즈 V보다 높음) -> 포인트 내림차순
+    ranking_list.sort(reverse=True, key=lambda x: (x[0], x[1], x[2]))
+
+    # 상위 N명 선택
+    top_players = ranking_list[:top_n]
+
+    # Embed 객체 생성
+    embed = discord.Embed(title="📊 티어 & 포인트 종합 랭킹 📊", color=discord.Color.gold())
+
+    # 1등에 왕관 이모지를 추가
+    crown_emoji = ["👑"]
+
+    for rank, (tier_rank, tier_num, points, user_id, tier_display) in enumerate(top_players, start=1):
+        # 왕관을 추가 (1등만)
+        crown = crown_emoji[0] if rank == 1 else ""
+
+        embed.add_field(
+            name=f"**{crown} {rank}위**",
+            value=f"{tier_display} <@{user_id}>: {int(points):,} 포인트",
+            inline=False
+        )
 
     # 메시지 응답
+    await interaction.response.send_message(embed=embed)
+
+# 티어 부여 함수
+# 유저 데이터를 저장할 파일 경로
+JSON_FOLDER = "json_data"
+USER_DATA_FILE = f"{JSON_FOLDER}/user_data.json"
+POINTS_FILE = f"{JSON_FOLDER}/points.json"
+
+# 티어별 색상 설정 (Embed 색상)
+TIER_COLORS = {
+    "브론즈": 0xCD7F32,
+    "실버": 0xC0C0C0,
+    "골드": 0xFFD700,
+    "플래티넘": 0x00FFFF,
+    "다이아몬드": 0x1E90FF,
+    "마스터": 0x9400D3,
+    "그랜드마스터": 0xFF4500,
+}
+
+# 티어별 이미지 (추후 추가 가능)
+TIER_IMAGES = {
+    "브론즈": "https://example.com/bronze.png",
+    "실버": "https://example.com/silver.png",
+    "골드": "https://example.com/gold.png",
+    "플래티넘": "https://example.com/platinum.png",
+    "다이아몬드": "https://example.com/diamond.png",
+    "마스터": "https://example.com/master.png",
+    "그랜드마스터": "https://example.com/grandmaster.png",
+}
+
+# 유저 데이터 로드
+def load_user_data():
+    try:
+        with open(USER_DATA_FILE, "r", encoding="utf-8") as f:
+            return json.load(f)
+    except FileNotFoundError:
+        return {}
+
+# 유저 데이터 저장
+def save_user_data(data):
+    with open(USER_DATA_FILE, "w", encoding="utf-8") as f:
+        json.dump(data, f, ensure_ascii=False, indent=4)
+
+# 포인트 로드
+def load_points():
+    try:
+        with open(POINTS_FILE, "r") as file:
+            return json.load(file)
+    except FileNotFoundError:
+        return {}
+
+# 포인트 저장
+def save_points(data):
+    with open(POINTS_FILE, "w") as file:
+        json.dump(data, file, indent=4)
+
+# 티어 부여 함수
+def assign_initial_tier():
+    tiers = ["브론즈 5", "브론즈 4", "브론즈 3", "브론즈 2", "브론즈 1"]
+    probabilities = [0.2, 0.2, 0.2, 0.2, 0.2]
+    return random.choices(tiers, probabilities)[0]
+
+def tier_upgrade(current_tier):
+    """ 티어 승급 확률을 기반으로 티어 변경 """
+    tier_groups = {
+        "브론즈": {"next": "실버", "prob": [0.6, 0.2, 0.2]},
+        "실버": {"next": "골드", "prob": [0.5, 0.25, 0.25]},
+        "골드": {"next": "플래티넘", "prob": [0.4, 0.3, 0.3]},
+        "플래티넘": {"next": "다이아몬드", "prob": [0.3, 0.35, 0.35]},
+        "다이아몬드": {"next": "마스터", "prob": [0.2, 0.4, 0.4]},
+        "마스터": {"next": "그랜드마스터", "prob": [0.1, 0.45, 0.45]},
+        "그랜드마스터": {"next": None, "prob": [0.0, 1.0, 0.0]},  # 최고 티어는 변동 없음
+    }
+
+    tier_name = current_tier.split()[0]  # 티어 이름 (ex. "브론즈")
+    tier_num = int(current_tier.split()[1]) if tier_name != "그랜드마스터" else None  # 티어 숫자 (ex. 3)
+
+    if tier_name not in tier_groups:
+        return current_tier  # 잘못된 티어면 변경 없음
+
+    # 확률 적용하여 승급, 유지, 하락 결정
+    result = random.choices(["승급", "유지", "하락"], weights=tier_groups[tier_name]["prob"])[0]
+
+    if result == "승급":
+        if tier_num and tier_num > 1:
+            return f"{tier_name} {tier_num - 1}"
+        else:
+            next_tier = tier_groups[tier_name]["next"]
+            if next_tier:
+                return f"{next_tier} 5" if next_tier != "그랜드마스터" else "그랜드마스터"
+            else:
+                return current_tier
+    elif result == "하락":
+        if tier_num and tier_num < 5:
+            return f"{tier_name} {tier_num + 1}"
+        else:
+            return current_tier  # 최하위 티어에서 더 내려갈 수 없음
+    else:
+        return current_tier  # 유지
+
+# /배치고사 커맨드 (임베드 적용)
+@bot.tree.command(name="배치고사", description="초기 티어를 부여받습니다.")
+async def placement_test(interaction: discord.Interaction):
+    user_id = str(interaction.user.id)
+    user_data = load_user_data()
+
+    if user_id in user_data and "tier" in user_data[user_id]:
+        embed = discord.Embed(
+            title="❌ 이미 배치고사를 완료하셨습니다!",
+            description="배치고사는 한 번만 진행할 수 있습니다.",
+            color=0xFF0000
+        )
+        await interaction.response.send_message(embed=embed, ephemeral=True)
+        return
+
+    tier = assign_initial_tier()
+    user_data[user_id] = {"tier": tier}
+    save_user_data(user_data)
+
+    tier_name = tier.split()[0]
+    embed = discord.Embed(
+        title="🏆 배치고사 결과",
+        description=f"🎉 축하합니다! 당신의 초기 티어는 **{tier}** 입니다.",
+        color=TIER_COLORS.get(tier_name, 0xFFFFFF)
+    )
+    embed.set_thumbnail(url=TIER_IMAGES.get(tier_name, "https://example.com/default.png"))
+    await interaction.response.send_message(embed=embed, ephemeral=True)
+
+# 포인트 차감 함수
+def deduct_points(user_id, amount):
+    data = load_points()
+    if user_id in data and data[user_id] >= amount:
+        data[user_id] -= amount
+        save_points(data)
+        return True
+    return False
+
+# 티어별 필요 포인트
+def get_required_points(tier):
+    tier_points = {
+        "브론즈": 100000,
+        "실버": 200000,
+        "골드": 500000,
+        "플래티넘": 1000000,
+        "다이아몬드": 10000000,
+        "마스터": 50000000,
+        "그랜드마스터": 100000000,
+    }
+    tier_name = tier.split()[0]
+    return tier_points.get(tier_name, 0)
+
+# 티어상승 커맨드
+@bot.tree.command(name="티어상승", description="포인트를 소모하여 티어를 상승시킵니다.")
+async def upgrade_tier(interaction: discord.Interaction):
+    user_id = str(interaction.user.id)
+    user_data = load_user_data()
+    points_data = load_points()
+
+    if user_id not in user_data or "tier" not in user_data[user_id]:
+        embed = discord.Embed(
+            title="🚫 티어가 없습니다!",
+            description="먼저 `/배치고사` 명령어를 사용하여 티어를 부여받아주세요.",
+            color=0xFF0000
+        )
+        await interaction.response.send_message(embed=embed, ephemeral=True)
+        return
+
+    current_tier = user_data[user_id]["tier"]
+    required_points = get_required_points(current_tier)
+
+    if user_id not in points_data or points_data[user_id] < required_points:
+        embed = discord.Embed(
+            title="❌ 포인트 부족!",
+            description=f"티어 상승을 위해 **{required_points:,} 포인트**가 필요합니다.\n현재 보유 포인트: **{points_data.get(user_id, 0):,}**",
+            color=0xFF0000
+        )
+        await interaction.response.send_message(embed=embed, ephemeral=True)
+        return
+
+    if not deduct_points(user_id, required_points):
+        embed = discord.Embed(
+            title="⚠️ 포인트 차감 오류!",
+            description="포인트 차감 중 오류가 발생했습니다. 다시 시도해 주세요.",
+            color=0xFF0000
+        )
+        await interaction.response.send_message(embed=embed, ephemeral=True)
+        return
+
+    new_tier = tier_upgrade(current_tier)
+    user_data[user_id]["tier"] = new_tier
+    save_user_data(user_data)
+
+    # 남은 포인트 업데이트
+    remaining_points = points_data.get(user_id, 0)
+
+    tier_name = new_tier.split()[0]
+    embed = discord.Embed(
+        title="✨ 티어 변경 완료!",
+        description=f"당신의 새로운 티어는 **{new_tier}** 입니다.\n\n💰 남은 포인트: **{remaining_points:,}**",
+        color=TIER_COLORS.get(tier_name, 0xFFFFFF)
+    )
+    embed.set_thumbnail(url=TIER_IMAGES.get(tier_name, "https://example.com/default.png"))
     await interaction.response.send_message(embed=embed)
 
 @bot.tree.command(name="도움말", description="도움말 페이지 링크를 확인합니다.")
