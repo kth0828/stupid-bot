@@ -821,8 +821,8 @@ async def daily_check_in(interaction: discord.Interaction):
         )
 
 # API 설정
-KOREANBOTS_API_KEY = "YOUR_KOREANBOTS_API_KEY"  # 한국 디스코드 리스트 API 키
-BOT_ID = "YOUR_BOT_ID"  # 봇 ID
+KOREANBOTS_API_KEY = "653534001742741552"  # 한국 디스코드 리스트 API 키
+BOT_ID = "1321071792772612127"  # 봇 ID
 VOTE_API_URL = f"https://api.koreanbots.dev/v2/bots/{BOT_ID}/votes"
 
 # 유저별 하트 지급 기록 저장
@@ -887,13 +887,10 @@ async def heart_reward(interaction: discord.Interaction):
 
 @bot.tree.command(name="랭킹", description="티어와 포인트를 종합하여 랭킹을 확인합니다.")
 async def show_ranking(interaction: discord.Interaction, top_n: int = 10):
-    """
-    티어와 포인트를 종합하여 랭킹을 출력합니다.
-    :param interaction: Discord 슬래시 커맨드 인터랙션
-    :param top_n: 표시할 랭킹 상위 n명의 수
-    """
+    """티어와 포인트를 종합하여 랭킹을 출력합니다."""
+    
     points = load_points()
-    user_data = load_user_data()  # 유저 데이터(티어 포함) 로드
+    user_data = load_user_data()
 
     if not points:
         await interaction.response.send_message("포인트 데이터가 없습니다.", ephemeral=True)
@@ -919,16 +916,39 @@ async def show_ranking(interaction: discord.Interaction, top_n: int = 10):
     for user_id, point in points.items():
         # 유저 티어 가져오기
         if user_id in user_data and "tier" in user_data[user_id]:
-            tier_name, tier_number = user_data[user_id]["tier"].split()
-            roman_tier = roman_numerals.get(tier_number, tier_number)  # 라틴 숫자로 변환
-            tier_display = f"[{tier_name} {roman_tier}]"  # 예: [브론즈 V]
-            tier_rank = tier_priority.get(tier_name, 0)  # 티어 우선순위
+            tier_info = user_data[user_id]["tier"].split()
+            tier_name = tier_info[0]  # 티어명 (ex. "브론즈", "실버", ..., "그랜드마스터")
+
+            # 그랜드마스터는 숫자가 없음 → 예외 처리
+            if len(tier_info) == 2:
+                tier_number = tier_info[1]  # 티어 숫자 (ex. "3")
+                roman_tier = roman_numerals.get(tier_number, tier_number)  # 라틴 숫자로 변환
+                
+                # 💡 마스터 & 그랜드마스터 굵게 처리
+                if tier_name in ["마스터", "그랜드마스터"]:
+                    tier_display = f"**[{tier_name} {roman_tier}]**"
+                else:
+                    tier_display = f"[{tier_name} {roman_tier}]"
+                
+                tier_rank = tier_priority.get(tier_name, 0)  # 티어 우선순위
+                numeric_tier = -int(tier_number)  # 숫자가 작을수록 높은 등급
+            else:
+                # 💡 마스터 & 그랜드마스터 굵게 처리
+                if tier_name in ["마스터", "그랜드마스터"]:
+                    tier_display = f"**[{tier_name}]**"
+                else:
+                    tier_display = f"[{tier_name}]"
+                
+                tier_rank = tier_priority.get(tier_name, 0)  # 최상위 우선순위
+                numeric_tier = 0  # 그랜드마스터는 가장 높은 순위이므로 숫자 없음
+
         else:
             tier_display = "[언랭크]"
             tier_rank = 0  # 언랭크는 가장 낮은 우선순위
+            numeric_tier = 0
 
-        # 정렬을 위한 튜플 (티어 우선순위, 티어 내림차순, 포인트 내림차순)
-        ranking_list.append((tier_rank, -int(tier_number) if tier_rank > 0 else 0, point, user_id, tier_display))
+        # 정렬을 위한 튜플 (티어 우선순위, 티어 숫자(낮을수록 상위), 포인트 내림차순)
+        ranking_list.append((tier_rank, numeric_tier, point, user_id, tier_display))
 
     # 정렬: 티어 우선순위 -> 같은 티어 내에서 숫자가 낮을수록(예: 브론즈 I이 브론즈 V보다 높음) -> 포인트 내림차순
     ranking_list.sort(reverse=True, key=lambda x: (x[0], x[1], x[2]))
