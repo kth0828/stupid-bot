@@ -1180,7 +1180,7 @@ async def upgrade_tier(interaction: discord.Interaction):
 
     current_tier = user_data[user_id]["tier"]
 
-    # ✅ 그랜드마스터는 최고 티어이므로 승급 불가
+    # ✅ 최고 티어는 승급 불가
     if current_tier == "그랜드마스터":
         embed = discord.Embed(
             title="🏆 최고 티어 도달!",
@@ -1210,7 +1210,7 @@ async def upgrade_tier(interaction: discord.Interaction):
         await interaction.response.send_message(embed=embed, ephemeral=True)
         return
 
-    # ✅ 티어 변경 확인 (승급, 유지, 하락)
+    # ✅ 티어 변경 확인
     new_tier = tier_upgrade(current_tier)
     user_data[user_id]["tier"] = new_tier
     save_user_data(user_data)
@@ -1218,8 +1218,20 @@ async def upgrade_tier(interaction: discord.Interaction):
     # 남은 포인트 업데이트
     remaining_points = points_data.get(user_id, 0)
 
-    # ✅ 티어 하락 여부 체크
-    if new_tier < current_tier:
+    # ✅ 올바른 티어 비교 방식 적용
+    def tier_to_numeric(tier_str):
+        """ 티어 문자열을 숫자로 변환하여 비교 가능하도록 함 """
+        tier_order = ["브론즈", "실버", "골드", "플래티넘", "다이아몬드", "마스터", "그랜드마스터"]
+        parts = tier_str.split()
+        tier_name = parts[0]
+        tier_number = int(parts[1]) if len(parts) > 1 else 0  # 그랜드마스터는 숫자가 없음
+
+        return (tier_order.index(tier_name), -tier_number)  # 숫자가 낮을수록 상위 티어
+
+    old_rank = tier_to_numeric(current_tier)
+    new_rank = tier_to_numeric(new_tier)
+
+    if new_rank < old_rank:
         embed = discord.Embed(
             title="📉 티어 하락...",
             description=f"아쉽게도 티어가 하락했습니다.\n현재 티어: **{new_tier}**\n\n💰 남은 포인트: **{remaining_points:,}**",
