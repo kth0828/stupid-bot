@@ -1179,6 +1179,17 @@ async def upgrade_tier(interaction: discord.Interaction):
         return
 
     current_tier = user_data[user_id]["tier"]
+
+    # ✅ 그랜드마스터는 최고 티어이므로 승급 불가
+    if current_tier == "그랜드마스터":
+        embed = discord.Embed(
+            title="🏆 최고 티어 도달!",
+            description="당신은 이미 **최고 티어**인 `그랜드마스터`입니다!\n더 이상 티어를 올릴 수 없습니다.",
+            color=0xFFD700
+        )
+        await interaction.response.send_message(embed=embed, ephemeral=True)
+        return
+
     required_points = get_required_points(current_tier)
 
     if user_id not in points_data or points_data[user_id] < required_points:
@@ -1199,6 +1210,7 @@ async def upgrade_tier(interaction: discord.Interaction):
         await interaction.response.send_message(embed=embed, ephemeral=True)
         return
 
+    # ✅ 티어 변경 확인 (승급, 유지, 하락)
     new_tier = tier_upgrade(current_tier)
     user_data[user_id]["tier"] = new_tier
     save_user_data(user_data)
@@ -1206,13 +1218,21 @@ async def upgrade_tier(interaction: discord.Interaction):
     # 남은 포인트 업데이트
     remaining_points = points_data.get(user_id, 0)
 
-    tier_name = new_tier.split()[0]
-    embed = discord.Embed(
-        title="✨ 티어 변경 완료!",
-        description=f"당신의 새로운 티어는 **{new_tier}** 입니다.\n\n💰 남은 포인트: **{remaining_points:,}**",
-        color=TIER_COLORS.get(tier_name, 0xFFFFFF)
-    )
-    embed.set_thumbnail(url=TIER_IMAGES.get(tier_name, "https://example.com/default.png"))
+    # ✅ 티어 하락 여부 체크
+    if new_tier < current_tier:
+        embed = discord.Embed(
+            title="📉 티어 하락...",
+            description=f"아쉽게도 티어가 하락했습니다.\n현재 티어: **{new_tier}**\n\n💰 남은 포인트: **{remaining_points:,}**",
+            color=0xFF4500  # 빨간색 계열
+        )
+    else:
+        embed = discord.Embed(
+            title="✨ 티어 변경 완료!",
+            description=f"당신의 새로운 티어는 **{new_tier}** 입니다.\n\n💰 남은 포인트: **{remaining_points:,}**",
+            color=TIER_COLORS.get(new_tier.split()[0], 0xFFFFFF)
+        )
+
+    embed.set_thumbnail(url=TIER_IMAGES.get(new_tier.split()[0], "https://example.com/default.png"))
     await interaction.response.send_message(embed=embed)
 
 @bot.tree.command(name="도움말", description="도움말 페이지 링크를 확인합니다.")
