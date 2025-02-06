@@ -9,10 +9,12 @@ import os
 import re
 import json
 import asyncio
-from datetime import datetime, timedelta
+from koreanbots import Koreanbots
+from datetime import datetime, timedelta, timezone
 from gtts import gTTS
 from yt_dlp import YoutubeDL
 from dico_token import Token
+from koreanbots_token import BOT_ID, Koreanbots_Token
 from googletrans import Translator, LANGUAGES
 
 tts_status = {}  # {guild_id: True/False}
@@ -33,6 +35,10 @@ class Music(commands.Cog):
             'options': '-vn',
         }
         self.ytdl = YoutubeDL(self.YTDL_OPTIONS)
+
+        # ✅ Koreanbots API 클라이언트 설정
+        self.BOT_ID = BOT_ID
+        self.koreanbots_client = Koreanbots(api_key=Koreanbots_Token)
 
     async def ensure_voice(self, interaction: discord.Interaction):
         """봇이 음성 채널에 연결되었는지 확인하고 필요 시 연결"""
@@ -68,11 +74,21 @@ class Music(commands.Cog):
 
     @app_commands.command(name="재생", description="YouTube URL을 통해 음악을 재생합니다.")
     async def play(self, interaction: discord.Interaction, url: str):
+        user_id = interaction.user.id
         voice_client = await self.ensure_voice(interaction)
         if not voice_client:
             return
 
         await interaction.response.send_message(f"🔄 YouTube에서 음악을 검색 중입니다: {url}", ephemeral=True)
+
+        # ✅ Koreanbots API를 사용하여 하트 투표 여부 확인 (하트 보상 코드 참고)
+        try:
+            response = await self.koreanbots_client.get_bot_vote(user_id, self.BOT_ID)
+            voted = response.data.voted  # True = 하트 누름, False = 하트 안 누름
+        except Exception as e:
+            await interaction.followup.send(f"⚠️ API 오류 발생: ```{e}```", ephemeral=True)
+            return
+
         try:
             # URL 정보를 비동기적으로 처리
             loop = asyncio.get_event_loop()
@@ -81,14 +97,29 @@ class Music(commands.Cog):
                 await interaction.followup.send("유효하지 않은 URL입니다. 다시 시도해주세요.")
                 return
 
-            song_url = data['url']
-            title = data.get('title', 'Unknown Title')
+            song_url = data["url"]
+            title = data.get("title", "Unknown Title")
             source = discord.FFmpegPCMAudio(song_url, **self.FFMPEG_OPTIONS)
 
             if voice_client.is_playing():
                 voice_client.stop()
             voice_client.play(source, after=lambda e: print(f"오류 발생: {e}") if e else None)
+
             await interaction.followup.send(f"🎶 **{title}** 음악이 재생됩니다!")
+
+            # ✅ 하트를 누르지 않은 유저에게 하트 유도 임베드 노출 (음악 재생 후)
+            if not voted:
+                embed = discord.Embed(
+                    title="💖 하트를 눌러주세요!",
+                    description=(
+                        "봇을 계속 사용하려면 [여기에서 하트를 눌러주세요](https://koreanbots.dev/bots/1321071792772612127)!\n\n"
+                        "✅ 하트를 누르면 전체 기능을 제한 없이 사용할 수 있습니다!"
+                    ),
+                    color=0xFF0000
+                )
+                embed.set_footer(text="하트를 눌러주시면 큰 힘이 됩니다! 😊")
+                await interaction.followup.send(embed=embed)
+
         except Exception as e:
             await interaction.followup.send(f"⚠️ 음악 재생 중 오류가 발생했습니다: {e}")
 
@@ -820,45 +851,39 @@ async def daily_check_in(interaction: discord.Interaction):
             f"현재 포인트: {formatted_points}점."
         )
 
-# API 설정
-KOREANBOTS_API_KEY = "653534001742741552"  # 한국 디스코드 리스트 API 키
-BOT_ID = "1321071792772612127"  # 봇 ID
-VOTE_API_URL = f"https://api.koreanbots.dev/v2/bots/{BOT_ID}/votes"
+# Koreanbots API 클라이언트 설정
+koreanbots_client = Koreanbots(api_key=Koreanbots_Token)
 
 # 유저별 하트 지급 기록 저장
 last_vote_time = {}
 
 @bot.tree.command(name="하트보상", description="한국 디스코드 리스트에서 하트를 눌러 포인트를 받습니다.")
 async def heart_reward(interaction: discord.Interaction):
-    user_id = str(interaction.user.id)
-    
-    # API 요청 (하트 목록 가져오기)
-    headers = {"Authorization": f"Bot {KOREANBOTS_API_KEY}"}
-    response = requests.get(VOTE_API_URL, headers=headers)
+    user_id = interaction.user.id
 
-    if response.status_code != 200:
+    # Koreanbots API를 사용하여 하트 투표 여부 확인
+    try:
+        response = await koreanbots_client.get_bot_vote(user_id, BOT_ID)
+        if not response.data.voted:
+            embed = discord.Embed(
+                title="❌ 하트를 누르지 않았어요!",
+                description="먼저 한국 디스코드 리스트에서 하트를 눌러주세요!",
+                url="https://koreanbots.dev/bots/1321071792772612127",  # ✅ 클릭하면 Koreanbots로 이동
+                color=0xFF0000
+            )
+            await interaction.response.send_message(embed=embed, ephemeral=True)
+            return
+    except Exception as e:
         embed = discord.Embed(
-            title="⚠️ API 오류!",
-            description="하트 정보를 불러오는 중 오류가 발생했습니다. 나중에 다시 시도해주세요.",
+            title="⚠️ API 오류 발생!",
+            description=f"하트 정보를 가져오는 중 오류가 발생했습니다.\n```{e}```",
             color=0xFF0000
         )
         await interaction.response.send_message(embed=embed, ephemeral=True)
         return
 
-    votes = response.json().get("data", [])  # 하트 누른 유저 목록
-
-    # 사용자가 하트를 눌렀는지 확인
-    if user_id not in [str(voter["id"]) for voter in votes]:
-        embed = discord.Embed(
-            title="❌ 하트를 누르지 않았어요!",
-            description="먼저 [한국 디스코드 리스트](https://koreanbots.dev/)에서 하트를 눌러주세요!",
-            color=0xFF0000
-        )
-        await interaction.response.send_message(embed=embed, ephemeral=True)
-        return
-
-    # 최근 지급 시간 확인 (쿨타임 12시간 적용)
-    current_time = datetime.utcnow()
+    # 🔹 최근 보상 지급 시간 확인 (12시간 쿨타임 적용)
+    current_time = datetime.now(timezone.utc)  # ✅ 수정된 부분
     if user_id in last_vote_time and current_time - last_vote_time[user_id] < timedelta(hours=12):
         embed = discord.Embed(
             title="⏳ 이미 보상을 받았어요!",
@@ -868,13 +893,13 @@ async def heart_reward(interaction: discord.Interaction):
         await interaction.response.send_message(embed=embed, ephemeral=True)
         return
 
-    # 포인트 지급 (100만 포인트)
-    points_data = load_points()
+    # ✅ 포인트 지급 (100만 포인트)
+    points_data = load_points()  # 기존 포인트 데이터 불러오기
     points_data[user_id] = points_data.get(user_id, 0) + 1_000_000
-    save_points(points_data)
+    save_points(points_data)  # 업데이트된 포인트 저장
 
     # 최근 보상 시간 기록
-    last_vote_time[user_id] = current_time
+    last_vote_time[user_id] = current_time  # ✅ 수정된 부분
 
     # 성공 메시지
     embed = discord.Embed(
@@ -883,7 +908,7 @@ async def heart_reward(interaction: discord.Interaction):
         color=0x00FF00
     )
     embed.set_footer(text="12시간 후 다시 보상을 받을 수 있습니다!")
-    await interaction.response.send_message(embed=embed, ephemeral=True)
+    await interaction.response.send_message(embed=embed)
 
 @bot.tree.command(name="랭킹", description="티어와 포인트를 종합하여 랭킹을 확인합니다.")
 async def show_ranking(interaction: discord.Interaction, top_n: int = 10):
