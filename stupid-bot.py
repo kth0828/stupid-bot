@@ -1,6 +1,7 @@
 import discord
 from discord.ext import commands
 from discord import app_commands
+from discord.ui import View, Button
 import requests
 import yt_dlp as YoutubeDL
 import asyncio
@@ -466,6 +467,12 @@ async def on_ready():
         print(f"동기화 중 오류 발생: {e}")
     await bot.change_presence(activity=custom_activity)
 
+@bot.tree.command(name="리로드", description="앱 커맨드를 강제 동기화합니다.")
+@commands.is_owner()
+async def reload_commands(interaction: discord.Interaction):
+    await bot.tree.sync()  # ✅ Slash 커맨드 강제 업데이트
+    await interaction.response.send_message("✅ 앱 커맨드가 성공적으로 동기화되었습니다!", ephemeral=True)
+
 # 슬래시 명령어 정의
 @bot.tree.command(name="핑", description="봇의 응답 속도를 확인합니다.")
 async def ping(interaction: discord.Interaction):
@@ -538,12 +545,45 @@ def get_points(user_id):
     data = load_points()
     return data.get(user_id, 0)
 
-@bot.tree.command(name="포인트", description="현재 포인트를 확인합니다.")
-async def points(interaction: discord.Interaction):
+# ✅ 티어별 색상 코드
+TIER_COLORS = {
+    "브론즈": 0xCD7F32,
+    "실버": 0xC0C0C0,
+    "골드": 0xFFD700,
+    "플래티넘": 0x00FFFF,
+    "다이아몬드": 0x1E90FF,
+    "마스터": 0x9400D3,
+    "그랜드마스터": 0xFF4500,
+}
+
+@bot.tree.command(name="내정보", description="현재 내 티어와 포인트를 확인합니다.")
+async def my_info(interaction: discord.Interaction):
     user_id = str(interaction.user.id)
+
+    # ✅ 유저 포인트 조회
     points = get_points(user_id)
     formatted_points = f"{points:,}"  # 쉼표 추가
-    await interaction.response.send_message(f"{interaction.user.name}님의 포인트는 {formatted_points}점입니다.")
+
+    # ✅ 유저 티어 조회 (기본값: 언랭크)
+    user_data = load_user_data()
+    tier = user_data.get(user_id, {}).get("tier", "언랭크")
+
+    # ✅ 티어 색상 적용 (없으면 기본 흰색)
+    tier_name = tier.split()[0]  # "브론즈 3" -> "브론즈"
+    embed_color = TIER_COLORS.get(tier_name, 0xFFFFFF)
+
+    # ✅ Embed 생성
+    embed = discord.Embed(
+        title=f"📜 {interaction.user.name}님의 정보",
+        color=embed_color
+    )
+    embed.add_field(name="🏆 현재 티어", value=f"**{tier}**", inline=False)
+    embed.add_field(name="💰 보유 포인트", value=f"**{formatted_points} 점**", inline=False)
+
+    # ✅ 프로필 이미지 추가
+    embed.set_thumbnail(url=interaction.user.avatar.url if interaction.user.avatar else None)
+
+    await interaction.response.send_message(embed=embed, ephemeral=True)
 
 @bot.tree.command(name="포인트양도", description="다른 사용자에게 포인트를 양도합니다.")
 @app_commands.describe(target="포인트를 받을 사용자", amount="양도할 포인트 금액")
@@ -860,18 +900,24 @@ last_vote_time = {}
 @bot.tree.command(name="하트보상", description="한국 디스코드 리스트에서 하트를 눌러 포인트를 받습니다.")
 async def heart_reward(interaction: discord.Interaction):
     user_id = interaction.user.id
+    bot_page_url = "https://koreanbots.dev/bots/1321071792772612127"  # 🔹 Koreanbots 봇 페이지
 
-    # Koreanbots API를 사용하여 하트 투표 여부 확인
+    # 🔹 Koreanbots API를 사용하여 하트 투표 여부 확인
     try:
         response = await koreanbots_client.get_bot_vote(user_id, BOT_ID)
         if not response.data.voted:
             embed = discord.Embed(
                 title="❌ 하트를 누르지 않았어요!",
                 description="먼저 한국 디스코드 리스트에서 하트를 눌러주세요!",
-                url="https://koreanbots.dev/bots/1321071792772612127",  # ✅ 클릭하면 Koreanbots로 이동
                 color=0xFF0000
             )
-            await interaction.response.send_message(embed=embed, ephemeral=True)
+
+            # 🔹 "하트 누르러 가기 💖" 버튼 추가
+            button = Button(label="하트 누르러 가기 💖", url=bot_page_url, style=discord.ButtonStyle.link)
+            view = View()
+            view.add_item(button)
+
+            await interaction.response.send_message(embed=embed, view=view, ephemeral=True)
             return
     except Exception as e:
         embed = discord.Embed(
@@ -883,7 +929,7 @@ async def heart_reward(interaction: discord.Interaction):
         return
 
     # 🔹 최근 보상 지급 시간 확인 (12시간 쿨타임 적용)
-    current_time = datetime.now(timezone.utc)  # ✅ 수정된 부분
+    current_time = datetime.now(timezone.utc)
     if user_id in last_vote_time and current_time - last_vote_time[user_id] < timedelta(hours=12):
         embed = discord.Embed(
             title="⏳ 이미 보상을 받았어요!",
@@ -899,16 +945,15 @@ async def heart_reward(interaction: discord.Interaction):
     save_points(points_data)  # 업데이트된 포인트 저장
 
     # 최근 보상 시간 기록
-    last_vote_time[user_id] = current_time  # ✅ 수정된 부분
+    last_vote_time[user_id] = current_time 
 
-    # 성공 메시지
+    # 🔹 성공 메시지
     embed = discord.Embed(
         title="🎉 하트 보상 지급 완료!",
         description="💖 한국 디스코드 리스트에서 하트를 눌러주셔서 감사합니다!\n\n💰 **1,000,000 포인트**가 지급되었습니다.",
         color=0x00FF00
     )
     embed.set_footer(text="12시간 후 다시 보상을 받을 수 있습니다!")
-    await interaction.response.send_message(embed=embed)
 
 @bot.tree.command(name="랭킹", description="티어와 포인트를 종합하여 랭킹을 확인합니다.")
 async def show_ranking(interaction: discord.Interaction, top_n: int = 10):
