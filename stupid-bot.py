@@ -114,7 +114,7 @@ class Music(commands.Cog):
                     title="💖 하트를 눌러주세요!",
                     description=(
                         "봇을 계속 사용하려면 [여기에서 하트를 눌러주세요](https://koreanbots.dev/bots/1321071792772612127)!\n\n"
-                        "✅ 하트를 누르면 전체 기능을 제한 없이 사용할 수 있습니다!"
+                        "✅ 1분의 시간만 투자해주세요. 더 좋은 서비스로 보답하겠습니다!"
                     ),
                     color=0xFF0000
                 )
@@ -258,14 +258,37 @@ class Utility(commands.Cog):
         translator = Translator()
         try:
             result = translator.translate(text, dest=dest_lang)
-            await interaction.response.send_message(f"🌐 번역 결과:\n'{text}' → '{result.text}'")
+            
+            # ✅ 번역 결과 임베드 생성
+            embed = discord.Embed(
+                title="🌐 번역 결과",
+                description=f"**입력:** `{text}`\n**출력:** `{result.text}`",
+                color=discord.Color.blue()
+            )
+            embed.set_footer(text=f"번역 언어: {LANGUAGES.get(dest_lang, '알 수 없음')} ({dest_lang})")
+
+            await interaction.response.send_message(embed=embed)
+        
         except Exception as e:
-            await interaction.response.send_message(f"⚠️ 번역 중 오류가 발생했습니다: {e}")
+            embed = discord.Embed(
+                title="⚠️ 번역 오류 발생",
+                description=f"번역 중 오류가 발생했습니다.\n```{e}```",
+                color=discord.Color.red()
+            )
+            await interaction.response.send_message(embed=embed, ephemeral=True)
 
     @app_commands.command(name="번역언어", description="번역 지원 언어 목록을 보여줍니다.")
     async def supported_languages(self, interaction: discord.Interaction):
-        languages = ', '.join([f"{code}: {name}" for code, name in LANGUAGES.items()])
-        await interaction.response.send_message(f"🌍 지원되는 언어 목록:\n{languages}")
+        languages = "\n".join([f"**{code}**: {name}" for code, name in LANGUAGES.items()])
+        
+        # ✅ 지원 언어 목록 임베드 생성
+        embed = discord.Embed(
+            title="🌍 지원되는 번역 언어 목록",
+            description=languages,
+            color=discord.Color.green()
+        )
+
+        await interaction.response.send_message(embed=embed)
 
     @app_commands.command(name="봇상태", description="현재 봇의 상태를 표시합니다.")
     async def status(self, interaction: discord.Interaction):
@@ -291,7 +314,6 @@ class Utility(commands.Cog):
         embed.add_field(name="📅 생성 날짜", value="2024년 12월 23일", inline=False)
         embed.add_field(name="📋 주요 기능", value="음악 재생, 번역, 게임, TTS와 같은 유틸리티 명령어 제공", inline=False)
         embed.add_field(name="👨‍💻 개발자", value="_kth. or kth#6249", inline=False)
-        embed.add_field(name="💻 GitHub", value="[프로젝트 링크](https://github.com/kth0828/stupid-bot.git)", inline=False)
         embed.set_thumbnail(url="https://i.ibb.co/80yWcDg/image.jpg")  # 봇의 로고 URL
         embed.set_footer(text="이 봇은 맞으면서 컸습니다.")
 
@@ -453,19 +475,32 @@ async def on_message(message):
 
 @bot.event
 async def on_ready():
+    """봇이 실행될 때 초기 설정 및 Koreanbots 서버 개수 업데이트"""
+    
+    # TTS 설정 로드
     load_tts_settings()
+
+    # 봇 정보 출력
     print(f"Logged in as {bot.user} (ID: {bot.user.id})")
-    custom_activity = discord.CustomActivity(
-        name="📺 중증외상센터 보는 중",  # 표시될 상태 메시지
-        type=discord.ActivityType.playing  # Playing 대신 Watching, Listening 등도 가능
-    )
     print(f"Cogs: {list(bot.cogs.keys())}")  # 로드된 Cog 확인
+
+    # Koreanbots 서버 개수 업데이트
+    await update_guild_count()
+
+    # 슬래시 명령어 동기화
     try:
-        synced = await bot.tree.sync()  # 애플리케이션 명령어 동기화
+        synced = await bot.tree.sync()
         print(f"슬래시 명령어 {len(synced)}개 동기화 완료!")
     except Exception as e:
         print(f"동기화 중 오류 발생: {e}")
+
+    # 봇 상태 설정
+    custom_activity = discord.CustomActivity(
+        name="📺 중증외상센터 보는 중",
+        type=discord.ActivityType.watching  # Watching 상태
+    )
     await bot.change_presence(activity=custom_activity)
+
 
 @bot.tree.command(name="리로드", description="앱 커맨드를 강제 동기화합니다.")
 @commands.is_owner()
@@ -583,7 +618,7 @@ async def my_info(interaction: discord.Interaction):
     # ✅ 프로필 이미지 추가
     embed.set_thumbnail(url=interaction.user.avatar.url if interaction.user.avatar else None)
 
-    await interaction.response.send_message(embed=embed, ephemeral=True)
+    await interaction.response.send_message(embed=embed, ephemeral=False)
 
 @bot.tree.command(name="포인트양도", description="다른 사용자에게 포인트를 양도합니다.")
 @app_commands.describe(target="포인트를 받을 사용자", amount="양도할 포인트 금액")
@@ -855,6 +890,7 @@ async def horse_race(interaction: discord.Interaction, bet: int, horse_number: i
     embed.set_footer(text=f"현재 {interaction.user.name}님의 포인트: {int(points[user_id]):,}")
     await message.edit(embed=embed)
 
+# 개발자 전용 커맨드
 DEVELOPER_ID = 883660105298608149  # 개발자의 디스코드 ID를 여기에 입력
 
 @bot.tree.command(name="추가", description="포인트를 추가합니다. (개발자 전용)")
@@ -871,6 +907,47 @@ async def add_points_cmd(interaction: discord.Interaction, user: discord.User, a
             ephemeral=True  # 이 메시지는 호출한 사용자만 볼 수 있음
         )
 
+@bot.tree.command(name="전체공지", description="봇이 속한 모든 서버에 공지 메시지를 보냅니다.")
+@commands.is_owner()  # ✅ 봇 소유자만 사용 가능
+async def broadcast(interaction: discord.Interaction, message: str):
+    success_count = 0  # 전송 성공한 서버 개수
+    fail_count = 0  # 전송 실패한 서버 개수
+
+    for guild in bot.guilds:
+        try:
+            # ✅ TTS 활성화된 채널 찾기
+            tts_channels = [channel for channel in guild.text_channels if channel.is_nsfw]  # NSFW가 아닌 경우 TTS 채널로 사용 가능
+            target_channel = tts_channels[0] if tts_channels else None  # 첫 번째 TTS 채널 선택
+
+            # ✅ 일반 텍스트 채널에서 메시지 전송 가능 여부 확인
+            if not target_channel:
+                for channel in guild.text_channels:
+                    if channel.permissions_for(guild.me).send_messages:
+                        target_channel = channel
+                        break  # 가장 먼저 찾은 사용 가능한 채널 선택
+            
+            if target_channel:
+                embed = discord.Embed(
+                    title="📢 전체 공지",
+                    description=message,
+                    color=discord.Color.red()
+                )
+                embed.set_footer(text=f"발신자: {interaction.user.name}", 
+                                 icon_url=interaction.user.avatar.url if interaction.user.avatar else None)
+                
+                await target_channel.send(embed=embed, tts=True)  # ✅ TTS 활성화된 채널이면 음성 출력
+                success_count += 1
+            else:
+                fail_count += 1  # 보낼 채널이 없는 서버
+        except Exception as e:
+            print(f"❌ {guild.name} 서버에 메시지 전송 실패: {e}")
+            fail_count += 1  # 예외 발생한 서버
+
+    # ✅ 명령어 실행한 유저에게 결과 알림
+    await interaction.response.send_message(
+        f"✅ 메시지가 {success_count}개 서버에 전송되었습니다.\n❌ 실패한 서버: {fail_count}개", 
+        ephemeral=True
+    )
 
 @bot.tree.command(name="출석체크", description="하루에 한 번 출석 체크로 포인트를 획득합니다.")
 async def daily_check_in(interaction: discord.Interaction):
@@ -1323,6 +1400,46 @@ async def help_link(interaction: discord.Interaction):
     await interaction.response.send_message(
         f"📖 [도움말 페이지를 확인하려면 여기를 클릭하세요]({help_url})"
     )
+
+@bot.tree.command(name="서버정보", description="봇이 현재 속한 서버 목록과 개수를 확인합니다.")
+async def server_info(interaction: discord.Interaction):
+    guilds = bot.guilds  # ✅ 현재 봇이 속한 모든 서버 리스트 가져오기
+    guild_count = len(guilds)  # ✅ 총 서버 개수
+    
+    # 🔹 서버 이름 목록 생성 (최대 20개만 표시)
+    guild_names = [guild.name for guild in guilds[:20]]
+    guild_list_text = "\n".join(guild_names) if guild_names else "서버 없음"
+
+    # ✅ Embed 메시지 생성
+    embed = discord.Embed(
+        title="🌍 현재 이용 중인 서버 정보",
+        description=f"🛡️ 총 서버 개수: **{guild_count}개**\n\n📜 **서버 목록 (최대 20개 표시)**\n{guild_list_text}",
+        color=0x1E90FF
+    )
+
+    await interaction.response.send_message(embed=embed)
+
+
+async def update_guild_count():
+    """현재 봇이 속한 서버 개수를 Koreanbots API에 업데이트"""
+    guild_count = len(bot.guilds)  # ✅ 현재 서버 개수 가져오기
+    try:
+        await koreanbots_client.post_guild_count(bot.user.id, servers=guild_count)  # ✅ API에 업데이트
+        print(f"✅ Koreanbots에 서버 개수 업데이트 완료: {guild_count}개")
+    except Exception as e:
+        print(f"❌ Koreanbots 서버 개수 업데이트 실패: {e}")
+
+
+@bot.event
+async def on_guild_join(guild):
+    """봇이 새로운 서버에 추가될 때"""
+    await update_guild_count()
+
+@bot.event
+async def on_guild_remove(guild):
+    """봇이 서버에서 제거될 때"""
+    await update_guild_count()
+
 
 # 명령어 사용 로깅 기능
 @bot.event
