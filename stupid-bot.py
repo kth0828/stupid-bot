@@ -6,6 +6,8 @@ import requests
 import yt_dlp as YoutubeDL
 import asyncio
 import random
+import psutil
+import platform 
 import os
 import re
 import json
@@ -30,6 +32,7 @@ class Music(commands.Cog):
             'noplaylist': True,
             'quiet': True,
             'default_search': 'auto',
+            'extract_flat': False,
         }
         self.FFMPEG_OPTIONS = {
             'before_options': '-reconnect 1 -reconnect_streamed 1 -reconnect_delay_max 5',
@@ -292,17 +295,45 @@ class Utility(commands.Cog):
 
     @app_commands.command(name="봇상태", description="현재 봇의 상태를 표시합니다.")
     async def status(self, interaction: discord.Interaction):
-        latency = round(self.bot.latency * 1000)  # 봇의 핑 (ms)
-        server_count = len(self.bot.guilds)  # 봇이 속한 서버 수
-        user_count = sum(guild.member_count for guild in self.bot.guilds)  # 모든 서버의 멤버 수 합계
+        try:
+            latency = round(interaction.client.latency * 1000)  # 핑 (ms)
+            server_count = len(interaction.client.guilds)  # 봇이 속한 서버 개수
+            user_count = sum(guild.member_count for guild in interaction.client.guilds)  # 전체 사용자 수
 
-        embed = discord.Embed(title="🤖 봇 상태", color=0x00ff00)
-        embed.add_field(name="핑", value=f"{latency}ms", inline=True)
-        embed.add_field(name="서버 수", value=f"{server_count}개", inline=True)
-        embed.add_field(name="사용자 수", value=f"{user_count}명", inline=True)
-        embed.set_footer(text=f"요청한 유저: {interaction.user}", icon_url=interaction.user.display_avatar.url)
+            # 시스템 및 프로세스 리소스 사용량 가져오기
+            cpu_usage = psutil.cpu_percent(interval=1)  # CPU 사용량 (%)
+            memory_usage = psutil.virtual_memory().percent  # 메모리 사용량 (%)
+            process = psutil.Process(os.getpid())  # 현재 봇의 프로세스
+            process_memory = process.memory_info().rss / 1024 / 1024  # 봇이 사용하는 메모리 (MB)
 
-        await interaction.response.send_message(embed=embed)
+            # OS 정보 가져오기
+            os_name = platform.system()  # Windows, Linux, MacOS 중 하나
+            os_version = platform.release()  # OS 버전 (예: 10, 11, Ubuntu 20.04 등)
+            python_version = platform.python_version()  # Python 버전
+
+            embed = discord.Embed(
+                title="🤖 현재 봇 상태",
+                description="봇의 실시간 상태 및 시스템 정보를 확인할 수 있습니다.",
+                color=discord.Color.green()
+            )
+            embed.add_field(name="📡 핑 (응답 속도)", value=f"🏓 {latency}ms", inline=True)
+            embed.add_field(name="🌍 서버 수", value=f"🛡 {server_count}개", inline=True)
+            embed.add_field(name="👥 총 사용자 수", value=f"👤 {user_count}명", inline=True)
+
+            embed.add_field(name="🖥 시스템 CPU 사용량", value=f"⚙ {cpu_usage}%", inline=True)
+            embed.add_field(name="💾 시스템 메모리 사용량", value=f"📊 {memory_usage}%", inline=True)
+            embed.add_field(name="🔹 봇 메모리 사용량", value=f"🗂 {process_memory:.2f}MB", inline=True)
+
+            embed.add_field(name="🛠 OS 정보", value=f"{os_name} {os_version}", inline=False)
+            embed.add_field(name="🐍 Python 버전", value=f"{python_version}", inline=True)
+
+            embed.set_footer(text=f"요청한 유저: {interaction.user}", icon_url=interaction.user.display_avatar.url)
+
+            await interaction.response.send_message(embed=embed)
+
+        except Exception as e:
+            print(f"⚠️ 오류 발생: {e}")
+            await interaction.response.send_message("⚠️ 상태 정보를 불러오는 중 오류가 발생했습니다.", ephemeral=True)
 
     @app_commands.command(name="정보", description="봇의 정보를 보여줍니다.")
     async def show_bot_info(self, interaction: discord.Interaction):
@@ -331,6 +362,7 @@ class Game(commands.Cog, name="게임"):
 
 intents = discord.Intents.default()
 intents.message_content = True  # 메시지 콘텐츠 읽기 활성화
+intents.messages = True  # ✅ 메시지 감지 활성화 (필수)
 
 bot = commands.Bot(command_prefix="!", intents=intents)  # 수정된 intents 전달
 
@@ -496,7 +528,7 @@ async def on_ready():
 
     # 봇 상태 설정
     custom_activity = discord.CustomActivity(
-        name="📺 중증외상센터 보는 중",
+        name="📺 폭싹 속았수다 보는 중",
         type=discord.ActivityType.watching  # Watching 상태
     )
     await bot.change_presence(activity=custom_activity)
@@ -513,6 +545,96 @@ async def reload_commands(interaction: discord.Interaction):
 async def ping(interaction: discord.Interaction):
     latency = round(bot.latency * 1000)  # 밀리초 단위
     await interaction.response.send_message(f"🏓 퐁! 현재 응답 속도는 {latency}ms 입니다.")
+
+# ✅ 봇 객체 생성
+intents = discord.Intents.default()
+intents.messages = True  # 메시지 감지 기능 활성화
+intents.message_content = True  # 메시지 내용 읽기 허용 (필수)
+
+# ✅ 챗봇 기본 응답 설정
+CHATBOT_RESPONSES = {
+    "안녕": ["안녕하세요! 😊", "반가워요!", "안녕!"],
+    "잘 지내?": ["네! 저는 항상 온라인이에요. 당신은요?", "덕분에 잘 지내고 있어요!"],
+    "이름이 뭐야?": ["저는 다기능 디스코드 봇이에요!", "이 서버에서 여러분을 돕는 봇입니다!"],
+    "뭐 해?": ["지금 당신과 대화 중이에요!", "대기 중이에요. 필요한 게 있나요?"],
+    "고마워": ["천만에요! 😊", "도움이 되었다니 기뻐요!"],
+    "잘자": ["좋은 꿈 꾸세요! 🌙", "편안한 밤 보내세요!"],
+    "사랑해": ["저도 좋아해요! 💖", "고맙습니다!"],
+    "심심해": ["게임을 해보세요! 🎮", "저랑 이야기하면 심심하지 않을 거예요!"],
+}
+
+# ✅ 필터링할 금지어 리스트 (소문자로 변환해 비교)
+BAD_WORDS = ["욕설1", "금지어2", "비속어3"]
+
+# ✅ 금지어 필터링 및 자동 응답 (챗봇 기능 추가)
+@bot.event
+async def on_message(message: discord.Message):
+    if message.author.bot:
+        return  # 봇의 메시지는 무시
+
+    # ✅ 금지어 감지 및 메시지 삭제
+    if any(bad_word in message.content.lower() for bad_word in BAD_WORDS):
+        try:
+            await message.delete()
+            await message.channel.send(f"{message.author.mention} ⚠️ 부적절한 단어가 포함되어 삭제되었습니다.")
+        except discord.Forbidden:
+            print("❌ 메시지 삭제 권한이 부족합니다.")
+        except discord.HTTPException as e:
+            print(f"❌ 메시지 삭제 중 오류 발생: {e}")
+
+    # ✅ 챗봇 응답 (메시지 내용과 사전 비교)
+    for key, responses in CHATBOT_RESPONSES.items():
+        if key in message.content.lower():
+            response = random.choice(responses)
+            await message.channel.send(f"{message.author.mention} {response}")
+            break  # 첫 번째 매칭된 질문에 대해서만 응답
+
+    # ✅ 명령어 처리를 위해 추가
+    await bot.process_commands(message)
+
+# ✅ 대화형 명령 (가위바위보 게임) - bot.tree.command 적용
+@bot.tree.command(name="가위바위보", description="봇과 가위바위보 게임을 합니다.")
+@app_commands.describe(선택="가위, 바위, 보 중 하나를 입력하세요.")
+async def rps(interaction: discord.Interaction, 선택: str):
+    import random
+    선택지 = ["가위", "바위", "보"]
+    봇선택 = random.choice(선택지)
+
+    if 선택 not in 선택지:
+        await interaction.response.send_message("❌ 가위, 바위, 보 중 하나를 입력해주세요!", ephemeral=True)
+        return
+
+    결과 = "비겼어요! 😐" if 선택 == 봇선택 else \
+          "🎉 이겼어요! 축하합니다!" if (선택 == "가위" and 봇선택 == "보") or \
+                                       (선택 == "바위" and 봇선택 == "가위") or \
+                                       (선택 == "보" and 봇선택 == "바위") else "😭 졌어요!"
+
+    embed = discord.Embed(
+        title="✊✌️ 가위바위보 결과",
+        description=f"🤖 **봇:** {봇선택}\n👤 **{interaction.user}:** {선택}\n\n{결과}",
+        color=discord.Color.blue()
+    )
+    await interaction.response.send_message(embed=embed)
+
+@bot.tree.command(name="킥", description="서버에서 유저를 강퇴합니다.")
+@app_commands.describe(user="강퇴할 유저", reason="강퇴 사유")
+async def kick(interaction: discord.Interaction, user: discord.Member, reason: str = "사유 없음"):
+    if not interaction.user.guild_permissions.kick_members:
+        await interaction.response.send_message("❌ 당신은 강퇴 권한이 없습니다!", ephemeral=True)
+        return
+
+    await user.kick(reason=reason)
+    await interaction.response.send_message(f"🔨 {user.mention} 님이 강퇴되었습니다. (사유: {reason})")
+
+@bot.tree.command(name="밴", description="서버에서 유저를 밴합니다.")
+@app_commands.describe(user="밴할 유저", reason="밴 사유")
+async def ban(interaction: discord.Interaction, user: discord.Member, reason: str = "사유 없음"):
+    if not interaction.user.guild_permissions.ban_members:
+        await interaction.response.send_message("❌ 당신은 밴 권한이 없습니다!", ephemeral=True)
+        return
+
+    await user.ban(reason=reason)
+    await interaction.response.send_message(f"⛔ {user.mention} 님이 서버에서 밴되었습니다. (사유: {reason})")
 
 # JSON 파일 경로
 JSON_FOLDER = "json_data"
@@ -654,42 +776,68 @@ async def transfer_points(interaction: discord.Interaction, target: discord.User
         f"✅ {interaction.user.name}님이 {target.name}님에게 {amount:,} 포인트를 양도했습니다!"
     )
 
+
 @bot.tree.command(name="도박", description="포인트를 베팅합니다.")
 @app_commands.describe(amount="베팅할 금액")
 async def bet(interaction: discord.Interaction, amount: int):
     user_id = str(interaction.user.id)
-    current_points = int(get_points(user_id))  # 포인트를 정수로 변환
+    current_points = int(get_points(user_id))  # 현재 포인트 가져오기
 
     if current_points < amount:
-        # 포인트가 부족한 경우
-        formatted_points = f"{current_points:,}"  # 쉼표 추가
-        await interaction.response.send_message(
-            f"{interaction.user.name}님, 포인트가 부족합니다. 현재 포인트: {formatted_points}점."
+        # 포인트 부족 메시지
+        formatted_points = f"{current_points:,}"
+        embed = discord.Embed(
+            title="⚠️ 포인트 부족!",
+            description=f"현재 포인트: **{formatted_points}점**\n베팅할 금액을 다시 확인해 주세요.",
+            color=discord.Color.red()
         )
+        embed.set_footer(text="랭킹 티어를 얻고 싶다면 /배치고사를 진행해 보세요!")
+        await interaction.response.send_message(embed=embed)
         return
 
-    # 성공/실패 결과 결정 (50% 확률)
+    # 성공/실패 결정 (50% 확률)
     result = random.choice(["win", "lose"])
 
     if result == "win":
         # 성공: 베팅액의 1.5배 지급
-        winnings = int(amount * 1.5)  # float 계산 후 정수 변환
+        winnings = int(amount * 1.5)  
         add_points(user_id, winnings)
-        formatted_winnings = f"{winnings:,}"  # 쉼표 추가
-        formatted_current_points = f"{int(get_points(user_id)):,}"  # 쉼표 추가
-        await interaction.response.send_message(
-            f"🎉 {interaction.user.name}님이 베팅에 성공했습니다! "
-            f"{formatted_winnings} 포인트를 획득했습니다! 현재 포인트: {formatted_current_points}점."
+        formatted_winnings = f"{winnings:,}"
+        formatted_current_points = f"{int(get_points(user_id)):,}"
+        
+        embed = discord.Embed(
+            title="🎉 베팅 성공!",
+            description=(
+                f"**{interaction.user.name}님이 베팅에 성공했습니다!**\n"
+                f"💰 획득 포인트: **{formatted_winnings}점**\n"
+                f"🏦 현재 포인트: **{formatted_current_points}점**"
+            ),
+            color=discord.Color.green()
         )
+        embed.set_thumbnail(url="https://i.ibb.co/J5Z6WyW/win.gif")  # 성공 이미지 추가 (GIF)
     else:
         # 실패: 베팅액 소멸
         deduct_points(user_id, amount)
-        formatted_amount = f"{amount:,}"  # 쉼표 추가
-        formatted_current_points = f"{int(get_points(user_id)):,}"  # 쉼표 추가
-        await interaction.response.send_message(
-            f"💔 {interaction.user.name}님이 베팅에 실패했습니다. {formatted_amount} 포인트를 잃었습니다. "
-            f"현재 포인트: {formatted_current_points}점."
+        formatted_amount = f"{amount:,}"
+        formatted_current_points = f"{int(get_points(user_id)):,}"
+
+        embed = discord.Embed(
+            title="💔 베팅 실패!",
+            description=(
+                f"**{interaction.user.name}님이 베팅에 실패했습니다.**\n"
+                f"❌ 잃은 포인트: **{formatted_amount}점**\n"
+                f"🏦 현재 포인트: **{formatted_current_points}점**"
+            ),
+            color=discord.Color.red()
         )
+        embed.set_thumbnail(url="https://i.ibb.co/1G7dDTq/lose.gif")  # 실패 이미지 추가 (GIF)
+
+    # 하단부 안내 추가 (배치고사 명령어 홍보)
+    embed.set_footer(text="랭킹에 도움되는 티어를 얻고 싶다면 /배치고사를 진행해 보세요!")
+
+    # 메시지 전송
+    await interaction.response.send_message(embed=embed)
+
 
 @bot.tree.command(name="주사위도박", description="포인트를 베팅합니다.")
 @app_commands.describe(amount="베팅할 금액", choice="베팅할 옵션 (짝수/홀수)")
@@ -890,8 +1038,12 @@ async def horse_race(interaction: discord.Interaction, bet: int, horse_number: i
     embed.set_footer(text=f"현재 {interaction.user.name}님의 포인트: {int(points[user_id]):,}")
     await message.edit(embed=embed)
 
+################################################################################
 # 개발자 전용 커맨드
+LOG_FILE = "log.txt"  # 로그 파일 경로
 DEVELOPER_ID = 883660105298608149  # 개발자의 디스코드 ID를 여기에 입력
+DEBUG_LOG_PARSING = True
+ITEMS_PER_PAGE = 10
 
 @bot.tree.command(name="추가", description="포인트를 추가합니다. (개발자 전용)")
 @app_commands.describe(user="포인트를 추가할 사용자", amount="추가할 금액")
@@ -907,47 +1059,278 @@ async def add_points_cmd(interaction: discord.Interaction, user: discord.User, a
             ephemeral=True  # 이 메시지는 호출한 사용자만 볼 수 있음
         )
 
-@bot.tree.command(name="전체공지", description="봇이 속한 모든 서버에 공지 메시지를 보냅니다.")
-@commands.is_owner()  # ✅ 봇 소유자만 사용 가능
+@bot.tree.command(name="공지", description="최근 30분 내 사용된 채널에 공지 메시지를 보냅니다.")
 async def broadcast(interaction: discord.Interaction, message: str):
-    success_count = 0  # 전송 성공한 서버 개수
-    fail_count = 0  # 전송 실패한 서버 개수
+    # ✅ 개발자만 실행 가능하도록 설정
+    if interaction.user.id != DEVELOPER_ID:
+        await interaction.response.send_message("❌ 이 명령어는 개발자만 사용할 수 있습니다.", ephemeral=True)
+        return
 
-    for guild in bot.guilds:
+    recent_channels = set()  # 최근 30분 내 사용된 채널 ID 저장
+    now = datetime.now(timezone(timedelta(hours=9)))  # 현재 KST 시간
+
+    # ✅ 최근 30분 내 사용된 채널 ID 가져오기
+    try:
+        with open(LOG_FILE, "r", encoding="utf-8") as log_file:
+            for line in log_file.readlines():
+                if "Channel:" in line and "Command:" in line:
+                    try:
+                        # ✅ 로그에서 날짜 및 채널 ID 추출
+                        log_time_match = re.search(r"\[(\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}) KST\]", line)
+                        channel_id_match = re.search(r"ID: (\d+)", line)  # ✅ 채널 ID 추출
+
+                        if log_time_match and channel_id_match:
+                            log_time_str = log_time_match.group(1)
+                            channel_id = int(channel_id_match.group(1))  # ✅ 정확한 채널 ID 추출
+
+                            # 로그 시간을 datetime 객체로 변환
+                            log_time = datetime.strptime(log_time_str, "%Y-%m-%d %H:%M:%S")
+                            log_time = log_time.replace(tzinfo=timezone(timedelta(hours=9)))
+
+                            # ✅ 최근 30분 이내의 기록만 저장 (1800초 = 30분)
+                            if (now - log_time).total_seconds() <= 1800:
+                                recent_channels.add(channel_id)
+
+                    except Exception as e:
+                        print(f"❌ 로그 파싱 오류: {e} | 로그: {line.strip()}")  # 디버깅용
+
+    except FileNotFoundError:
+        await interaction.response.send_message("❌ 로그 파일을 찾을 수 없습니다.", ephemeral=True)
+        return
+
+    if not recent_channels:
+        await interaction.response.send_message("❌ 최근 30분 이내 사용된 채널이 없습니다.", ephemeral=True)
+        return
+
+    success_count = 0
+    fail_count = 0
+    success_channels = []  # ✅ 성공한 채널 리스트 저장
+    fail_channels = []  # ✅ 실패한 채널 리스트 저장
+
+    # ✅ 최근 30분 내 사용된 채널에 공지 메시지 전송
+    for channel_id in recent_channels:
+        channel = bot.get_channel(channel_id)  # ✅ 채널 ID가 올바르게 추출되었는지 확인
+        if channel is None:
+            print(f"❌ 채널 ID {channel_id}가 존재하지 않음")
+            fail_count += 1
+            fail_channels.append(f"[ID: {channel_id}] (존재하지 않음)")
+            continue  # 다음 채널로 이동
+
         try:
-            # ✅ TTS 활성화된 채널 찾기
-            tts_channels = [channel for channel in guild.text_channels if channel.is_nsfw]  # NSFW가 아닌 경우 TTS 채널로 사용 가능
-            target_channel = tts_channels[0] if tts_channels else None  # 첫 번째 TTS 채널 선택
+            embed = discord.Embed(
+                title="📢 서버 공지",
+                description=message,
+                color=discord.Color.gold()
+            )
+            embed.set_footer(text=f"발신자: {interaction.user.name}",
+                             icon_url=interaction.user.avatar.url if interaction.user.avatar else None)
 
-            # ✅ 일반 텍스트 채널에서 메시지 전송 가능 여부 확인
-            if not target_channel:
-                for channel in guild.text_channels:
-                    if channel.permissions_for(guild.me).send_messages:
-                        target_channel = channel
-                        break  # 가장 먼저 찾은 사용 가능한 채널 선택
-            
-            if target_channel:
-                embed = discord.Embed(
-                    title="📢 전체 공지",
-                    description=message,
-                    color=discord.Color.red()
-                )
-                embed.set_footer(text=f"발신자: {interaction.user.name}", 
-                                 icon_url=interaction.user.avatar.url if interaction.user.avatar else None)
-                
-                await target_channel.send(embed=embed, tts=True)  # ✅ TTS 활성화된 채널이면 음성 출력
-                success_count += 1
-            else:
-                fail_count += 1  # 보낼 채널이 없는 서버
+            await channel.send(embed=embed)
+            success_count += 1
+            success_channels.append(f"[{channel.guild.name}] #{channel.name} (ID: {channel.id})")  # ✅ 성공한 채널 기록
+
         except Exception as e:
-            print(f"❌ {guild.name} 서버에 메시지 전송 실패: {e}")
-            fail_count += 1  # 예외 발생한 서버
+            print(f"❌ {channel.guild.name} - {channel.name} 채널에 메시지 전송 실패: {e}")
+            fail_count += 1
+            fail_channels.append(f"[{channel.guild.name}] #{channel.name} (ID: {channel.id}) - 오류: {e}")
 
-    # ✅ 명령어 실행한 유저에게 결과 알림
+    # ✅ 콘솔에 전송된 채널 목록 출력
+    print("\n📢 **공지 메시지 전송 결과** 📢")
+    print(f"✅ 성공한 채널 ({success_count}개):")
+    for success in success_channels:
+        print(f"  - {success}")
+
+    print(f"\n❌ 실패한 채널 ({fail_count}개):")
+    for fail in fail_channels:
+        print(f"  - {fail}")
+
+    # ✅ 실행한 유저에게 결과 보고
     await interaction.response.send_message(
-        f"✅ 메시지가 {success_count}개 서버에 전송되었습니다.\n❌ 실패한 서버: {fail_count}개", 
+        f"✅ 최근 30분 내 사용된 {success_count}개 채널에 공지를 전송했습니다.\n"
+        f"❌ 실패한 채널: {fail_count}개",
         ephemeral=True
     )
+
+def log_command(interaction: discord.Interaction):
+    """슬래시 명령어 실행 로그를 파일에 저장 (채널 정보 포함)"""
+    kst = datetime.now(timezone(timedelta(hours=9)))  # KST (UTC+9)
+    timestamp = kst.strftime("%Y-%m-%d %H:%M:%S")
+
+    server = interaction.guild.name if interaction.guild else "DM"
+    channel_name = interaction.channel.name if interaction.channel else "DM"
+    channel_id = interaction.channel.id if interaction.channel else 0  # DM의 경우 ID 없음
+    user_name = interaction.user.name
+    user_id = interaction.user.id
+    command_name = interaction.data['name']
+
+    log_message = (f"[{timestamp} KST] [App Command Log] Server: {server} | "
+                   f"Channel: {channel_name} (ID: {channel_id}) | "
+                   f"User: {user_name} (ID: {user_id}) | Command: {command_name}")
+
+    # 콘솔 출력
+    print(log_message)
+
+    # 로그 파일 저장
+    with open(LOG_FILE, "a", encoding="utf-8") as log_file:
+        log_file.write(log_message + "\n")
+
+@bot.event
+async def on_interaction(interaction: discord.Interaction):
+    if interaction.type == discord.InteractionType.application_command:
+        log_command(interaction)  # 명령어 실행 로그 저장
+        await bot.process_application_commands(interaction)
+
+@bot.tree.command(name="봇종료", description="최근 10분 내 명령어를 실행한 채널에 공지를 보내고 종료합니다.")
+async def shutdown(interaction: discord.Interaction):
+    # ✅ 개발자만 실행 가능하도록 설정
+    if interaction.user.id != DEVELOPER_ID:
+        await interaction.response.send_message("❌ 이 명령어는 개발자만 사용할 수 있습니다.", ephemeral=True)
+        return
+
+    recent_channels = set()  # 최근 10분 내 명령어 실행한 채널 ID 저장
+    now = datetime.now(timezone(timedelta(hours=9)))
+
+    try:
+        with open(LOG_FILE, "r", encoding="utf-8") as log_file:
+            for line in log_file.readlines():
+                if "Channel:" in line and "Command:" in line:
+                    try:
+                        # ✅ 로그에서 날짜 및 채널 ID 추출 (정규 표현식 사용)
+                        log_time_match = re.search(r"\[(\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}) KST\]", line)
+                        channel_id_match = re.search(r"ID: (\d+)", line)
+
+                        if log_time_match and channel_id_match:
+                            log_time_str = log_time_match.group(1)
+                            channel_id = int(channel_id_match.group(1))  # ✅ 정확한 채널 ID 추출
+
+                            # 로그 시간을 datetime 객체로 변환
+                            log_time = datetime.strptime(log_time_str, "%Y-%m-%d %H:%M:%S")
+                            log_time = log_time.replace(tzinfo=timezone(timedelta(hours=9)))
+
+                            # ✅ 최근 10분 이내의 기록만 저장
+                            if (now - log_time).total_seconds() <= 600:
+                                recent_channels.add(channel_id)
+
+                    except Exception as e:
+                        print(f"❌ 로그 파싱 오류: {e}")
+
+    except FileNotFoundError:
+        await interaction.response.send_message("❌ 로그 파일을 찾을 수 없습니다.", ephemeral=True)
+        return
+
+    if not recent_channels:
+        await interaction.response.send_message("❌ 최근 10분 이내에 명령어가 실행된 채널이 없습니다.", ephemeral=True)
+        return
+
+    # ✅ 명령어가 실행된 채널에 종료 메시지 전송
+    for channel_id in recent_channels:
+        channel = bot.get_channel(channel_id)
+        if channel:
+            await channel.send("📢 **봇이 10분 후 종료됩니다. 이용해 주셔서 감사합니다! 🙏**")
+
+    # ✅ 관리자에게 결과 보고
+    await interaction.response.send_message(
+        f"✅ 최근 10분 내 명령어 실행 채널 {len(recent_channels)}곳에 공지를 전송했습니다.",
+        ephemeral=True
+    )
+
+    # ✅ 10분 대기 후 봇 종료
+    await asyncio.sleep(600)
+    await bot.close()
+
+@bot.tree.command(name="서버수", description="현재 봇이 들어가 있는 서버 수를 출력합니다. (개발자 전용)")
+async def show_server_count(interaction: discord.Interaction):
+    if interaction.user.id != DEVELOPER_ID:
+        await interaction.response.send_message("이 명령어는 개발자만 사용할 수 있습니다.", ephemeral=True)
+        return
+
+    count = len(bot.guilds)
+    await interaction.response.send_message(f"📊 현재 봇이 참여 중인 서버 수: **{count}개**", ephemeral=True)
+    print(f"[INFO] 개발자가 서버 수를 확인했습니다: {count}개")
+
+# ----------- 페이지 뷰 -----------
+
+class ServerListView(discord.ui.View):
+    def __init__(self, guilds, author_id, page=0):
+        super().__init__(timeout=60)
+        self.guilds = sorted(guilds, key=lambda g: g.name.lower())
+        self.page = page
+        self.author_id = author_id
+        self.total_pages = (len(self.guilds) - 1) // ITEMS_PER_PAGE + 1
+
+    async def send_page(self, interaction: discord.Interaction):
+        if interaction.user.id != self.author_id:
+            await interaction.response.send_message("이 페이지는 당신에게 표시되지 않습니다.", ephemeral=True)
+            return
+
+        start = self.page * ITEMS_PER_PAGE
+        end = start + ITEMS_PER_PAGE
+        entries = self.guilds[start:end]
+
+        description = "\n".join([f"`{g.name}` (`{g.id}`)" for g in entries])
+        embed = discord.Embed(
+            title=f"📋 서버 목록 (페이지 {self.page + 1}/{self.total_pages})",
+            description=description,
+            color=discord.Color.blue()
+        )
+
+        await interaction.response.edit_message(embed=embed, view=self)
+
+    @discord.ui.button(label="⏪ 이전", style=discord.ButtonStyle.gray)
+    async def previous(self, interaction: discord.Interaction, button: discord.ui.Button):
+        if self.page > 0:
+            self.page -= 1
+            await self.send_page(interaction)
+
+    @discord.ui.button(label="⏩ 다음", style=discord.ButtonStyle.gray)
+    async def next(self, interaction: discord.Interaction, button: discord.ui.Button):
+        if self.page < self.total_pages - 1:
+            self.page += 1
+            await self.send_page(interaction)
+
+@bot.tree.command(name="서버목록", description="봇이 속한 서버들의 이름과 ID를 페이지로 출력합니다 (개발자 전용)")
+async def list_guilds(interaction: discord.Interaction):
+    if interaction.user.id != DEVELOPER_ID:
+        await interaction.response.send_message("이 명령어는 개발자만 사용할 수 없습니다.", ephemeral=True)
+        return
+
+    view = ServerListView(bot.guilds, interaction.user.id)
+    start = 0
+    end = ITEMS_PER_PAGE
+    entries = sorted(bot.guilds, key=lambda g: g.name.lower())[start:end]
+
+    description = "\n".join([f"`{g.name}` (`{g.id}`)" for g in entries])
+    embed = discord.Embed(
+        title=f"📋 서버 목록 (페이지 1/{view.total_pages})",
+        description=description,
+        color=discord.Color.blue()
+    )
+
+    await interaction.response.send_message(embed=embed, view=view, ephemeral=True)
+
+# ----------- 슬래시 커맨드: 서버강퇴 -----------
+
+@bot.tree.command(name="서버강퇴", description="서버 ID를 입력하여 강제로 해당 서버에서 퇴장시킵니다. (개발자 전용)")
+@app_commands.describe(server_id="강제로 퇴장시킬 서버의 ID")
+async def kick_guild(interaction: discord.Interaction, server_id: str):
+    if interaction.user.id != DEVELOPER_ID:
+        await interaction.response.send_message("이 명령어는 개발자만 사용할 수 없습니다.", ephemeral=True)
+        return
+
+    target = discord.utils.get(bot.guilds, id=int(server_id))
+
+    if not target:
+        await interaction.response.send_message("해당 서버를 찾을 수 없습니다. 올바른 ID인지 확인하세요.", ephemeral=True)
+        return
+
+    try:
+        await target.leave()
+        await interaction.response.send_message(f"✅ `{target.name}` 서버에서 퇴장했습니다.", ephemeral=True)
+        print(f"[LOG] 서버 강퇴됨: {target.name} ({server_id})")
+    except Exception as e:
+        await interaction.response.send_message(f"❌ 퇴장 실패: {e}", ephemeral=True)
+
+########################################################################
 
 @bot.tree.command(name="출석체크", description="하루에 한 번 출석 체크로 포인트를 획득합니다.")
 async def daily_check_in(interaction: discord.Interaction):
@@ -1031,6 +1414,7 @@ async def heart_reward(interaction: discord.Interaction):
         color=0x00FF00
     )
     embed.set_footer(text="12시간 후 다시 보상을 받을 수 있습니다!")
+    
 
 @bot.tree.command(name="랭킹", description="티어와 포인트를 종합하여 랭킹을 확인합니다.")
 async def show_ranking(interaction: discord.Interaction, top_n: int = 10):
@@ -1235,12 +1619,12 @@ async def tier_info(interaction: discord.Interaction):
 
     # 티어별 승급 포인트
     tier_info = {
-        "그랜드마스터": (100_000_000, "최고의 유저만 도달할 수 있는 최상위 티어"),
-        "마스터": (50_000_000, "매우 숙련된 유저가 도달할 수 있는 티어"),
-        "다이아몬드": (10_000_000, "고수들의 전장! 더욱 전략적인 플레이가 필요"),
+        "그랜드마스터": (0, "최고의 유저만 도달할 수 있는 최상위 티어"),
+        "마스터": (50_000_000, "매우 고인물인 유저가 도달할 수 있는 티어"),
+        "다이아몬드": (10_000_000, "본격적으로 고수라고 불리우는 티어"),
         "플래티넘": (1_000_000, "상위권 유저들이 속한 티어"),
         "골드": (500_000, "중상위권 유저들이 속한 티어"),
-        "실버": (200_000, "평균적인 실력을 가진 유저들의 티어"),
+        "실버": (200_000, "평균적인 유저들의 티어"),
         "브론즈": (100_000, "초보자 및 입문자들이 시작하는 기본 티어")
     }
 
@@ -1453,10 +1837,27 @@ async def on_command(ctx):
 @bot.event
 async def on_interaction(interaction: discord.Interaction):
     if interaction.type == discord.InteractionType.application_command:
+        # 현재 시간 (KST, UTC+9)
+        kst = datetime.now(timezone(timedelta(hours=9)))
+        timestamp = kst.strftime("%Y-%m-%d %H:%M:%S")  # YYYY-MM-DD HH:MM:SS 형식
+
         server = interaction.guild.name if interaction.guild else "DM"
-        user = interaction.user.name
+        channel_name = interaction.channel.name if interaction.channel else "DM"
+        channel_id = interaction.channel.id if interaction.channel else 0  # DM의 경우 ID 없음
+        user_name = interaction.user.name
+        user_id = interaction.user.id  # ✅ 고유 ID 추가
         command_name = interaction.data['name']
-        print(f"[App Command Log] App Command | Server: {server} | User: {user} | Command: {command_name}")
+
+        log_message = (f"[{timestamp} KST] [App Command Log] Server: {server} | "
+                       f"Channel: {channel_name} (ID: {channel_id}) | "
+                       f"User: {user_name} (ID: {user_id}) | Command: {command_name}")
+
+        # 콘솔에 로그 출력
+        print(log_message)
+
+        # 로그 파일에 저장 (파일이 없으면 생성, 있으면 추가 기록)
+        with open("log.txt", "a", encoding="utf-8") as log_file:
+            log_file.write(log_message + "\n")
 
         # 명령어 로그 이후 추가 동작
         await bot.process_application_commands(interaction)
